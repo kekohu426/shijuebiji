@@ -13,8 +13,8 @@ interface AIStudioClient {
 
 const ROLES = {
   organizer: { emoji: '📝', name: '笔记整理大师', color: '#6366f1' },
-  designer: { emoji: '🎨', name: '视觉设计师', color: '#8b5cf6' },
-  painter: { emoji: '🖌️', name: '绘图艺术家', color: '#3b82f6' }
+  designer: { emoji: '🎨', name: '视觉设计大师', color: '#8b5cf6' },
+  painter: { emoji: '🖌️', name: '绘图创作大师', color: '#3b82f6' }
 };
 
 const STYLES = [
@@ -250,7 +250,6 @@ const App = () => {
 
           {/* STEP 1: INPUT */}
           <div className="control-card">
-            <div className="guide-text">1. 笔记内容输入</div>
             <textarea
               className="text-input"
               placeholder="输入原文（2000字以内），AI 将为您整理高密度笔记..."
@@ -260,13 +259,13 @@ const App = () => {
             />
             {stage === Stage.Input && (
               <button className="primary-btn" onClick={handleOrganize}>
-                ✨ 提交整理 (Organize)
+                ✨ 提交整理
               </button>
             )}
             {stage === Stage.Organizing && (
               <div className="status-indicator">
                 <div className="spinner"></div>
-                <div>笔记整理大师已就位...<br /><span style={{ fontSize: '12px', opacity: 0.7 }}>正在深度拆解，全覆盖提炼中...</span></div>
+                <div>📝 笔记整理大师正在工作...</div>
               </div>
             )}
             {stage >= Stage.ReviewStructure && !structureConfirmed && (
@@ -276,10 +275,10 @@ const App = () => {
                   <span>@{ROLES.organizer.name} 已完成整理</span>
                 </div>
                 <div className="role-message">
-                  请在右侧查看并编辑笔记结构，确认无误后点击继续。
+                  右侧已生成笔记结构，可编辑修改，确认后继续下一步
                 </div>
                 <button className="confirm-btn" onClick={() => setStructureConfirmed(true)}>
-                  ✅ 确认结构，邀请设计师
+                  ✅ 确认结构，继续
                 </button>
               </div>
             )}
@@ -299,10 +298,9 @@ const App = () => {
                   <span>@{ROLES.designer.name} 已加入工作流</span>
                 </div>
                 <div className="role-message">
-                  为您的视觉笔记选择一个合适的风格吧！
+                  请选择视觉风格，并配置个性化参数
                 </div>
               </div>
-              <div className="guide-text">2. 视觉风格配置</div>
 
               <div style={{ fontSize: '12px', color: '#a1a1aa' }}>选择风格:</div>
               <div className="style-grid">
@@ -340,13 +338,13 @@ const App = () => {
 
               {stage === Stage.ReviewStructure && (
                 <button className="confirm-btn" onClick={() => { setDesignConfirmed(true); handleGeneratePrompt(); }}>
-                  ✅ 确认设计，生成指令
+                  ✅ 确认设计
                 </button>
               )}
               {stage === Stage.Designing && (
                 <div className="status-indicator">
                   <div className="spinner"></div>
-                  <div>笔记灵感大师已上线...<br /><span style={{ fontSize: '12px', opacity: 0.7 }}>正在应用高清晰度模版...</span></div>
+                  <div>🎨 视觉设计大师正在工作...</div>
                 </div>
               )}
               {stage >= Stage.ReviewPrompt && (
@@ -366,20 +364,19 @@ const App = () => {
                   <span>@{ROLES.painter.name} 已就绪</span>
                 </div>
                 <div className="role-message">
-                  一切准备完毕！请在右侧最后检查绘图指令，即将为您绘制高清视觉笔记。
+                  右侧已生成绘图指令，可查看修改，确认后开始绘制
                 </div>
               </div>
-              <div className="guide-text">3. 最终确认</div>
 
               {stage === Stage.ReviewPrompt && (
                 <button className="primary-btn" onClick={handlePaint}>
-                  🖌️ 确认并绘制 (Paint)
+                  🖌️ 确认绘制
                 </button>
               )}
               {stage === Stage.Painting && (
                 <div className="status-indicator">
                   <div className="spinner"></div>
-                  <div>笔记绘制大师已启动...<br /><span style={{ fontSize: '12px', opacity: 0.7 }}>渲染高清图片中</span></div>
+                  <div>🖌️ 绘图创作大师正在工作...</div>
                 </div>
               )}
               {stage === Stage.Done && (
