@@ -536,10 +536,21 @@ const App = () => {
         return await aiStudio.hasSelectedApiKey();
       }
     } catch (e) { }
-    return !!(process.env.API_KEY || process.env.GEMINI_API_KEY);
+    return !!(
+      process.env.API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      (import.meta as any)?.env?.VITE_API_KEY ||
+      (import.meta as any)?.env?.VITE_GEMINI_API_KEY
+    );
   };
 
-  const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY || process.env.GEMINI_API_KEY });
+  const getAI = () => new GoogleGenAI({
+    apiKey:
+      process.env.API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      (import.meta as any)?.env?.VITE_API_KEY ||
+      (import.meta as any)?.env?.VITE_GEMINI_API_KEY
+  });
 
   // --- ACTIONS ---
 
