@@ -33,7 +33,7 @@ const STYLES = [
 const processLeftBrain = async (ai: GoogleGenAI, text: string): Promise<LeftBrainData> => {
   console.log("Processing Left Brain for text length:", text.length);
   const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || (import.meta as any)?.env?.VITE_API_KEY || (import.meta as any)?.env?.VITE_GEMINI_API_KEY;
-  const useProxy = !!TEXT_PROXY && !!apiKey;
+  const useProxy = !!TEXT_PROXY;
   const prompt = `
     # Role
 你是一位 ** 极致精炼的全覆盖笔记专家 **。
@@ -70,7 +70,7 @@ const processLeftBrain = async (ai: GoogleGenAI, text: string): Promise<LeftBrai
   try {
     let responseText = '';
     if (useProxy) {
-      const resp = await fetch(`${TEXT_PROXY}/v1beta/models/${TEXT_MODEL}:generateContent?key=${apiKey}`, {
+      const resp = await fetch(`${TEXT_PROXY}/v1beta/models/${TEXT_MODEL}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] })
@@ -110,7 +110,7 @@ const processLeftBrain = async (ai: GoogleGenAI, text: string): Promise<LeftBrai
 
 const processSplitBrain = async (ai: GoogleGenAI, text: string): Promise<string[]> => {
   const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || (import.meta as any)?.env?.VITE_API_KEY || (import.meta as any)?.env?.VITE_GEMINI_API_KEY;
-  const useProxy = !!TEXT_PROXY && !!apiKey;
+  const useProxy = !!TEXT_PROXY;
   const prompt = `
 # Role
 你是一位**资深内容策略师**，擅长判断文本是否需要拆分，以及如何进行最优拆分。
@@ -155,7 +155,7 @@ ${text}
   try {
     let responseText = '';
     if (useProxy) {
-      const resp = await fetch(`${TEXT_PROXY}/v1beta/models/${TEXT_MODEL}:generateContent?key=${apiKey}`, {
+      const resp = await fetch(`${TEXT_PROXY}/v1beta/models/${TEXT_MODEL}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] })
@@ -323,7 +323,7 @@ const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Pr
     }
 
     // Use proxy to avoid browser CORS; Vite proxy handles dev, production needs backend.
-    const url = `${IMAGEN_PROXY}/v1beta/models/${IMAGE_MODEL}:predict?key=${apiKey}`;
+    const url = `${IMAGEN_PROXY}/v1beta/models/${IMAGE_MODEL}:predict`;
     const body = {
       instances: [
         { prompt: imagePrompt }
