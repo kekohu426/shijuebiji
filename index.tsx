@@ -32,6 +32,8 @@ const STYLES = [
 
 const processLeftBrain = async (ai: GoogleGenAI, text: string): Promise<LeftBrainData> => {
   console.log("Processing Left Brain for text length:", text.length);
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || (import.meta as any)?.env?.VITE_API_KEY || (import.meta as any)?.env?.VITE_GEMINI_API_KEY;
+  const useProxy = !!TEXT_PROXY && !!apiKey;
   const prompt = `
     # Role
 你是一位 ** 极致精炼的全覆盖笔记专家 **。
@@ -61,14 +63,27 @@ const processLeftBrain = async (ai: GoogleGenAI, text: string): Promise<LeftBrai
           ... (Repeat based on original structure or 3 - 6 modules)
         ]
 }
-    
+
     【输入文本】
     ${text}
 `;
   try {
-    const res = await ai.models.generateContent({ model: 'gemini-2.0-flash-exp', contents: prompt });
-    console.log("Left Brain Raw Response:", res.text);
-    const raw = res.text?.replace(/```json/gi, '').replace(/```/g, '').trim() || '{}';
+    let responseText = '';
+    if (useProxy) {
+      const resp = await fetch(`${TEXT_PROXY}/v1beta/models/${TEXT_MODEL}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] })
+      });
+      const jsonResp = await resp.json();
+      responseText = jsonResp?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      const res = await ai.models.generateContent({ model: TEXT_MODEL, contents: prompt });
+      responseText = res.text || '';
+    }
+
+    console.log("Left Brain Raw Response:", responseText);
+    const raw = responseText?.replace(/```json/gi, '').replace(/```/g, '').trim() || '{}';
     const json = JSON.parse(raw);
     // Add IDs for React rendering
     json.modules = json.modules?.map((s: any, i: number) => ({ ...s, id: `m${i} ` })) || [];
@@ -94,6 +109,8 @@ const processLeftBrain = async (ai: GoogleGenAI, text: string): Promise<LeftBrai
 };
 
 const processSplitBrain = async (ai: GoogleGenAI, text: string): Promise<string[]> => {
+  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || (import.meta as any)?.env?.VITE_API_KEY || (import.meta as any)?.env?.VITE_GEMINI_API_KEY;
+  const useProxy = !!TEXT_PROXY && !!apiKey;
   const prompt = `
 # Role
 你是一位**资深内容策略师**，擅长判断文本是否需要拆分，以及如何进行最优拆分。
@@ -136,8 +153,21 @@ ${text}
 `;
 
   try {
-    const res = await ai.models.generateContent({ model: 'gemini-2.0-flash-exp', contents: prompt });
-    const raw = res.text?.replace(/```json/gi, '').replace(/```/g, '').trim() || '[]';
+    let responseText = '';
+    if (useProxy) {
+      const resp = await fetch(`${TEXT_PROXY}/v1beta/models/${TEXT_MODEL}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }] })
+      });
+      const jsonResp = await resp.json();
+      responseText = jsonResp?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      const res = await ai.models.generateContent({ model: TEXT_MODEL, contents: prompt });
+      responseText = res.text || '';
+    }
+
+    const raw = responseText?.replace(/```json/gi, '').replace(/```/g, '').trim() || '[]';
     const parts = JSON.parse(raw);
 
     if (Array.isArray(parts) && parts.length > 0) {
@@ -216,6 +246,8 @@ Footer Watermark: "${settings.watermark}"
 // Default to Gemini 3 Pro Image (preview); override via IMAGE_MODEL env if needed.
 const IMAGE_MODEL = process.env.IMAGE_MODEL || 'gemini-3-pro-image-preview';
 const IMAGEN_PROXY = process.env.IMAGEN_PROXY || '/api/imagen';
+const TEXT_PROXY = process.env.TEXT_PROXY || '/api/genai';
+const TEXT_MODEL = 'gemini-2.0-flash-exp';
 
 const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Promise<string> => {
   console.log("Starting image generation with prompt:", prompt.substring(0, 120));
@@ -916,6 +948,29 @@ const App = () => {
     setStage(Stage.Done);
   };
 
+  const regenerateNote = async (noteId: string) => {
+    const note = notes.find(n => n.id === noteId);
+    if (!note) return;
+    updateNote(noteId, { isProcessing: true, stage: Stage.Organizing, structure: undefined, generatedPrompt: undefined, finalImage: undefined });
+    const ai = getAI();
+    try {
+      const structure = await processLeftBrain(ai, note.originalText);
+      updateNote(noteId, { structure, stage: Stage.Designing });
+      const prompt = processRightBrain(structure, visualSettings);
+      updateNote(noteId, { generatedPrompt: prompt, stage: Stage.ReviewPrompt });
+      const img = await processHand(ai, prompt, visualSettings.styleId);
+      updateNote(noteId, { finalImage: img, stage: Stage.Done, isProcessing: false });
+    } catch (e) {
+      updateNote(noteId, { isProcessing: false, error: "重新生成失败" });
+    }
+  };
+
+  const regenerateAll = async () => {
+    for (const n of notes) {
+      await regenerateNote(n.id);
+    }
+  };
+
   const handleBatchDownload = () => {
     notes.forEach((note, index) => {
       if (note.finalImage) {
@@ -1002,6 +1057,7 @@ const App = () => {
               let roleKey = 'organizer';
               if (item.componentType === 'style_select' || item.componentType === 'structure_review') roleKey = 'designer';
               if (item.componentType === 'final_result') roleKey = 'painter';
+              if (item.componentType === 'regenerate_all') roleKey = 'painter';
 
               const roleConfig = ROLES[roleKey as keyof typeof ROLES];
 
@@ -1125,6 +1181,14 @@ const App = () => {
                         </div>
                       )}
 
+                      {item.componentType === 'regenerate_all' && (
+                        <div className="center-container" style={{ marginTop: '8px' }}>
+                          <button className="confirm-btn btn-compact" onClick={regenerateAll}>
+                            🔄 重新生成全部笔记
+                          </button>
+                        </div>
+                      )}
+
                     </div>
                   </div>
                 </div>
@@ -1152,9 +1216,14 @@ const App = () => {
                 style={{ minHeight: '80px', marginBottom: '12px' }}
               />
               {stage === Stage.Input && (
-                <button className="primary-btn" onClick={handleSplit} disabled={!rawText.trim()}>
-                  ✨ 开始智能整理
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="primary-btn" onClick={handleSplit} disabled={!rawText.trim()}>
+                    ✨ 开始智能整理
+                  </button>
+                  <button className="primary-btn" onClick={regenerateAll} disabled={notes.length === 0}>
+                    🔄 重新生成全部
+                  </button>
+                </div>
               )}
               {stage === Stage.ReviewPrompt && (
                 <div style={{ fontSize: '12px', color: '#666', textAlign: 'center', padding: '10px' }}>
