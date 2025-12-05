@@ -1,308 +1,461 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Stage, LeftBrainData } from './types';
+import { Stage, NoteUnit, LeftBrainData, ContentModule } from './types';
 
 interface FlowCanvasProps {
-    stage: Stage;
+    notes: NoteUnit[];
+    updateNote: (id: string, data: Partial<NoteUnit>) => void;
     rawText: string;
-    structure: LeftBrainData | null;
-    generatedPrompt: string;
-    finalImage: string;
-    imageError: string;
-    setStructure: (data: LeftBrainData) => void;
-    setGeneratedPrompt: (prompt: string) => void;
-    onAddModule: () => void;
 }
 
-const FlowConnection = ({ active, completed }: { active: boolean; completed: boolean }) => (
-    <div className="connection-container">
-        <svg width="100" height="40" viewBox="0 0 100 40" style={{ overflow: 'visible' }}>
-            {/* Background Curved Path */}
-            <path
-                d="M 50 0 Q 30 20 50 40"
-                stroke="var(--border-color)"
-                strokeWidth="2"
-                fill="none"
-            />
-            {/* Animated Flow Line */}
-            {(active || completed) && (
-                <path
-                    d="M 50 0 Q 30 20 50 40"
-                    className={`connection-line ${active ? 'active' : ''} ${completed ? 'completed' : ''}`}
-                />
-            )}
-            {/* Arrow Head */}
-            <path
-                d="M 45 32 L 50 40 L 55 32"
-                fill="none"
-                stroke={active || completed ? (completed ? "var(--success)" : "var(--accent-primary)") : "var(--border-color)"}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-        </svg>
-    </div>
-);
+// --- Helper Components ---
 
-const FlowNode = ({
-    title,
-    status,
-    isActive,
-    isCompleted,
-    children,
-    defaultExpanded = true
-}: {
-    title: string;
-    status: string;
-    isActive: boolean;
-    isCompleted: boolean;
-    children: React.ReactNode;
-    defaultExpanded?: boolean;
-}) => {
-    const [expanded, setExpanded] = useState(defaultExpanded);
-    const nodeRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (isActive && nodeRef.current) {
-            // Center the active node
-            nodeRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    }, [isActive]);
+// 1. Original Text Capsule
+const OriginalTextCapsule: React.FC<{ text: string }> = ({ text }) => {
+    const [expanded, setExpanded] = useState(false);
 
     return (
-        <div
-            ref={nodeRef}
-            className={`flow-node ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''} ${!isActive && !isCompleted ? 'waiting' : ''}`}
-        >
-            <div className="node-header" onClick={() => setExpanded(!expanded)}>
-                <div className="node-title">
-                    {isCompleted ? '✅' : isActive ? '⚡️' : '⚪️'} {title}
-                </div>
-                <div style={{ fontSize: '12px', opacity: 0.5 }}>
-                    {status}
-                </div>
+        <div className="flow-stage-original">
+            <div
+                className="original-capsule"
+                onClick={() => setExpanded(!expanded)}
+            >
+                <span className="stage-icon">📄</span>
+                <span>原始文本</span>
+                <span className="text-muted">({text.length} 字)</span>
+                <span style={{ fontSize: '10px', marginLeft: '4px' }}>{expanded ? '▼' : '▶'}</span>
             </div>
-            <div className={`node-content ${expanded ? 'expanded' : 'collapsed'}`} onClick={e => e.stopPropagation()}>
-                {children}
+
+            {expanded && (
+                <div className="original-content-expanded">
+                    <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '12px', textAlign: 'left', margin: 0, color: '#a1a1aa' }}>
+                        {text}
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// 2. Block-based Structure Editor
+interface BlockEditorProps {
+    structure: LeftBrainData;
+    onChange: (newStructure: LeftBrainData) => void;
+}
+
+const BlockEditor: React.FC<BlockEditorProps> = ({ structure, onChange }) => {
+    const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        onChange({ ...structure, title: e.target.value });
+    };
+
+    const handleSummaryChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        onChange({ ...structure, summary_context: e.target.value });
+    };
+
+    const handleModuleChange = (index: number, field: keyof ContentModule, value: string) => {
+        const newModules = [...structure.modules];
+        newModules[index] = { ...newModules[index], [field]: value };
+        onChange({ ...structure, modules: newModules });
+    };
+
+    const addModule = () => {
+        const newModule: ContentModule = {
+            id: Date.now().toString(),
+            heading: '新模块',
+            content: ''
+        };
+        onChange({ ...structure, modules: [...structure.modules, newModule] });
+    };
+
+    const deleteModule = (index: number) => {
+        const newModules = structure.modules.filter((_, i) => i !== index);
+        onChange({ ...structure, modules: newModules });
+    };
+
+    return (
+        <div className="block-editor">
+            <div className="block-editor-header">
+                <input
+                    className="block-title-input"
+                    value={structure.title}
+                    onChange={handleTitleChange}
+                    placeholder="主标题"
+                />
+                <textarea
+                    className="block-summary-input"
+                    value={structure.summary_context}
+                    onChange={handleSummaryChange}
+                    placeholder="背景摘要..."
+                />
+            </div>
+
+            <div className="block-modules-list">
+                {structure.modules.map((module, index) => (
+                    <div key={module.id || index} className="module-card">
+                        <div className="module-index">{index + 1}.</div>
+                        <div className="module-content-area">
+                            <input
+                                className="module-heading-input"
+                                value={module.heading}
+                                onChange={(e) => handleModuleChange(index, 'heading', e.target.value)}
+                                placeholder="模块标题"
+                            />
+                            <textarea
+                                className="module-body-input"
+                                value={module.content}
+                                onChange={(e) => handleModuleChange(index, 'content', e.target.value)}
+                                placeholder="模块内容..."
+                            />
+                        </div>
+                        <div className="module-actions">
+                            <button className="icon-btn delete" onClick={() => deleteModule(index)} title="删除">🗑️</button>
+                        </div>
+                    </div>
+                ))}
+                <button className="add-module-btn" onClick={addModule}>
+                    <span>➕ 添加模块</span>
+                </button>
             </div>
         </div>
     );
 };
 
-export const FlowCanvas: React.FC<FlowCanvasProps> = ({
-    stage,
-    rawText,
-    structure,
-    generatedPrompt,
-    finalImage,
-    imageError,
-    setStructure,
-    setGeneratedPrompt,
-    onAddModule
-}) => {
-    const bottomRef = useRef<HTMLDivElement>(null);
-    const [imageModalOpen, setImageModalOpen] = useState(false);
+// 3. Magic Prompt Display
+const MagicPrompt: React.FC<{ isProcessing: boolean; isCompleted: boolean }> = ({ isProcessing, isCompleted }) => {
+    if (isProcessing) {
+        return (
+            <div className="magic-prompt-container">
+                <div className="magic-icon">🔮</div>
+                <div className="magic-text">正在提取视觉灵感...</div>
+            </div>
+        );
+    }
 
+    if (isCompleted) {
+        return (
+            <div className="magic-ready">
+                <span style={{ fontSize: '24px' }}>✨</span>
+                <span>绘图指令已就绪</span>
+            </div>
+        );
+    }
+
+    return <div className="card-placeholder">等待生成...</div>;
+};
+
+// --- Main Card Component ---
+
+interface EditableCardProps {
+    type: 'split' | 'structure' | 'prompt' | 'image';
+    note: NoteUnit;
+    index: number;
+    onEdit: (field: string, value: any) => void;
+    isActive: boolean;
+}
+
+const EditableCard: React.FC<EditableCardProps> = ({ type, note, index, onEdit, isActive }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState('');
+
+    const isProcessing = note.isProcessing;
+    const isCompleted = type === 'split' ? !!note.structure :
+        type === 'structure' ? !!note.generatedPrompt :
+            type === 'prompt' ? !!note.finalImage :
+                !!note.finalImage;
+
+    // Auto-expand logic for Split Text
     useEffect(() => {
-        if (bottomRef.current) {
-            bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+        if (type === 'split' && !isEditing) {
+            // Split text is always "editing" in the sense of being visible text
+            // But here we use a textarea that auto-saves on blur or change?
+            // Actually requirement says: "Direct edit... WYSIWYG".
+            // So we can just render a textarea that updates state.
         }
-    }, [stage, structure, generatedPrompt, finalImage]);
+    }, [type]);
+
+    const handleSplitTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        onEdit('originalText', e.target.value);
+    };
+
+    const cardClass = `flow-card ${isActive ? 'focus-active' : 'focus-dimmed'}`;
+
+    // 1. Split Text Card
+    if (type === 'split') {
+        return (
+            <div className={cardClass} id={`card-split-${index}`}>
+                <div className="flow-card-header">
+                    <div className="flow-card-title">
+                        <span className="card-icon">📝</span>
+                        <span>片段 #{index + 1}</span>
+                    </div>
+                </div>
+                <div className="flow-card-content">
+                    <textarea
+                        className="card-textarea"
+                        style={{ minHeight: '120px', background: 'transparent', border: 'none', resize: 'vertical' }}
+                        value={note.originalText}
+                        onChange={handleSplitTextChange}
+                    />
+                </div>
+            </div>
+        );
+    }
+
+    // 2. Structure Card
+    if (type === 'structure') {
+        return (
+            <div className={cardClass} id={`card-structure-${index}`}>
+                <div className="flow-card-header">
+                    <div className="flow-card-title">
+                        <span className="card-icon">🧠</span>
+                        <span>结构 #{index + 1}</span>
+                    </div>
+                    <div className="flow-card-actions">
+                        {isProcessing && <span className="status-badge processing">分析中</span>}
+                        {isCompleted && <span className="status-badge completed">✓</span>}
+                    </div>
+                </div>
+                <div className="flow-card-content">
+                    {note.structure ? (
+                        <BlockEditor
+                            structure={note.structure}
+                            onChange={(newStructure) => onEdit('structure', newStructure)}
+                        />
+                    ) : (
+                        <div className="card-placeholder">等待处理...</div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // 3. Prompt Card
+    if (type === 'prompt') {
+        return (
+            <div className={cardClass} id={`card-prompt-${index}`}>
+                <div className="flow-card-header">
+                    <div className="flow-card-title">
+                        <span className="card-icon">🎨</span>
+                        <span>绘图指令</span>
+                    </div>
+                </div>
+                <div className="flow-card-content">
+                    <MagicPrompt isProcessing={isProcessing} isCompleted={!!note.generatedPrompt} />
+                </div>
+            </div>
+        );
+    }
+
+    // 4. Image Card
+    if (type === 'image') {
+        return (
+            <div className={cardClass} id={`card-image-${index}`}>
+                <div className="flow-card-header">
+                    <div className="flow-card-title">
+                        <span className="card-icon">🖼️</span>
+                        <span>视觉笔记</span>
+                    </div>
+                    <div className="flow-card-actions">
+                        {isProcessing && <span className="status-badge processing">绘制中</span>}
+                        {isCompleted && <span className="status-badge completed">✓</span>}
+                    </div>
+                </div>
+                <div className="flow-card-content">
+                    {note.finalImage ? (
+                        <>
+                            <img src={note.finalImage} alt={`视觉笔记 ${index + 1}`} className="result-image" />
+                            <a
+                                href={note.finalImage}
+                                download={`visual-note-${index + 1}.png`}
+                                className="download-btn"
+                            >
+                                ⬇️ 下载图片
+                            </a>
+                        </>
+                    ) : (
+                        <div className="image-placeholder">
+                            <span className="placeholder-icon">🖼️</span>
+                            <p className="card-placeholder">等待绘制...</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    return null;
+};
+
+// --- Main Canvas ---
+
+export const FlowCanvas: React.FC<FlowCanvasProps> = ({ notes, updateNote, rawText }) => {
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    // Determine active stage/card for auto-focus
+    // Logic: Find the first note that is processing, or the last one that was updated?
+    // Let's use a simple heuristic:
+    // If any note is processing, focus that one.
+    // If not, focus the last note's most advanced stage.
+    const getActiveCardInfo = () => {
+        if (notes.length === 0) return { index: -1, type: 'none' };
+
+        // 1. Find processing note
+        const processingIndex = notes.findIndex(n => n.isProcessing);
+        if (processingIndex !== -1) {
+            const note = notes[processingIndex];
+            // Guess stage based on data presence
+            if (!note.structure) return { index: processingIndex, type: 'split' }; // Should be structure processing actually
+            if (!note.generatedPrompt) return { index: processingIndex, type: 'structure' };
+            if (!note.finalImage) return { index: processingIndex, type: 'prompt' };
+            return { index: processingIndex, type: 'image' };
+        }
+
+        // 2. If none processing, find the "furthest" note
+        // For simplicity, let's just focus on the last note and its latest available stage
+        const lastIndex = notes.length - 1;
+        const lastNote = notes[lastIndex];
+        if (lastNote.finalImage) return { index: lastIndex, type: 'image' };
+        if (lastNote.generatedPrompt) return { index: lastIndex, type: 'prompt' };
+        if (lastNote.structure) return { index: lastIndex, type: 'structure' };
+        return { index: lastIndex, type: 'split' };
+    };
+
+    const activeInfo = getActiveCardInfo();
+
+    // Auto-scroll effect
+    useEffect(() => {
+        if (activeInfo.index !== -1 && scrollContainerRef.current) {
+            const elementId = `card-${activeInfo.type}-${activeInfo.index}`;
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+            }
+        }
+    }, [activeInfo.index, activeInfo.type, notes]); // Depend on notes to trigger on updates
+
+    const hasAnyNotes = notes.length > 0;
+    const hasStructures = notes.some(n => n.structure);
+    const hasPrompts = notes.some(n => n.generatedPrompt);
+    const hasImages = notes.some(n => n.finalImage);
 
     return (
-        <div className="flow-canvas">
-
-            {/* 0. Placeholder / Empty State */}
-            {stage === Stage.Input && !rawText && (
-                <div style={{ marginTop: '10vh', textAlign: 'center', opacity: 0.3 }}>
-                    <div style={{ fontSize: '48px', marginBottom: '20px' }}>🌊</div>
-                    <div>Flow Canvas Ready</div>
+        <div className="flow-canvas-vertical" ref={scrollContainerRef}>
+            {/* 1. Original Text */}
+            {rawText && (
+                <div className="horizontal-scroll-stage">
+                    <div className="stage-box-original">
+                        <div className="stage-label">
+                            <span className="stage-icon">📄</span>
+                            <span>原始文本</span>
+                            <span className="text-muted">({rawText.length} 字)</span>
+                        </div>
+                        <OriginalTextCapsule text={rawText} />
+                    </div>
                 </div>
             )}
 
-            {/* 1. Input Node */}
-            {rawText && (
-                <FlowNode
-                    title="原始信息 (Input)"
-                    status={stage > Stage.Input ? "已导入" : "待处理"}
-                    isActive={stage === Stage.Input}
-                    isCompleted={stage > Stage.Input}
-                    defaultExpanded={true}
-                >
-                    <div style={{ whiteSpace: 'pre-wrap', color: '#a1a1aa', fontSize: '14px', lineHeight: '1.6' }}>
-                        {rawText}
-                    </div>
-                </FlowNode>
-            )}
-
-            {/* Connection 1-2 */}
-            {(stage >= Stage.Organizing || (rawText && stage === Stage.Input)) && (
-                <FlowConnection
-                    active={stage === Stage.Organizing}
-                    completed={stage >= Stage.ReviewStructure}
-                />
-            )}
-
-            {/* 2. Structure Node */}
-            {structure && (
-                <FlowNode
-                    title="结构化笔记 (Structure)"
-                    status={stage > Stage.ReviewStructure ? "已确认" : "AI整理中"}
-                    isActive={stage === Stage.ReviewStructure}
-                    isCompleted={stage > Stage.ReviewStructure}
-                >
-                    <div style={{ marginBottom: '12px', fontSize: '11px', color: '#818cf8' }}>
-                        🏷️ {structure.visual_theme_keywords}
-                    </div>
-                    <input
-                        className="invisible-input title-input"
-                        value={structure.title}
-                        onChange={e => setStructure({ ...structure, title: e.target.value })}
-                        disabled={stage !== Stage.ReviewStructure}
-                        placeholder="主标题"
-                    />
-                    <input
-                        className="invisible-input subtitle-input"
-                        value={structure.summary_context}
-                        onChange={e => setStructure({ ...structure, summary_context: e.target.value })}
-                        disabled={stage !== Stage.ReviewStructure}
-                        placeholder="内容简介"
-                    />
-
-                    <div className="modules-grid">
-                        {structure.modules.map((mod, idx) => (
-                            <div key={mod.id} className="structure-section-compact">
-                                <input
-                                    className="invisible-input heading-input-compact"
-                                    value={mod.heading}
-                                    onChange={e => {
-                                        const newMods = [...structure.modules];
-                                        newMods[idx].heading = e.target.value;
-                                        setStructure({ ...structure, modules: newMods });
-                                    }}
-                                    disabled={stage !== Stage.ReviewStructure}
-                                    placeholder="子标题"
+            {/* 2. Split Text Stage */}
+            {hasAnyNotes && (
+                <div className="horizontal-scroll-stage">
+                    <div className="stage-box">
+                        <div className="stage-label">
+                            <span className="stage-icon">📝</span>
+                            <span>原文拆分 (Core Workbench)</span>
+                        </div>
+                        <div className="horizontal-cards-container">
+                            {notes.map((note, index) => (
+                                <EditableCard
+                                    key={note.id}
+                                    type="split"
+                                    note={note}
+                                    index={index}
+                                    onEdit={(field, value) => updateNote(note.id, { [field]: value })}
+                                    isActive={activeInfo.type === 'split' && activeInfo.index === index}
                                 />
-                                <textarea
-                                    className="invisible-input body-input-compact"
-                                    value={mod.content}
-                                    onChange={e => {
-                                        const newMods = [...structure.modules];
-                                        newMods[idx].content = e.target.value;
-                                        setStructure({ ...structure, modules: newMods });
-                                    }}
-                                    disabled={stage !== Stage.ReviewStructure}
-                                    placeholder="核心内容"
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 3. Structure Stage */}
+            {hasStructures && (
+                <div className="horizontal-scroll-stage">
+                    <div className="stage-box">
+                        <div className="stage-label">
+                            <span className="stage-icon">🧠</span>
+                            <span>笔记结构</span>
+                        </div>
+                        <div className="horizontal-cards-container">
+                            {notes.map((note, index) => (
+                                <EditableCard
+                                    key={note.id}
+                                    type="structure"
+                                    note={note}
+                                    index={index}
+                                    onEdit={(field, value) => updateNote(note.id, { [field]: value })}
+                                    isActive={activeInfo.type === 'structure' && activeInfo.index === index}
                                 />
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-
-                    {stage === Stage.ReviewStructure && (
-                        <button
-                            onClick={onAddModule}
-                            className="add-module-btn"
-                        >
-                            + 新增子模块
-                        </button>
-                    )}
-                </FlowNode>
+                </div>
             )}
 
-            {/* Connection 2-3 */}
-            {structure && (
-                <FlowConnection
-                    active={stage === Stage.Designing}
-                    completed={stage >= Stage.ReviewPrompt}
-                />
-            )}
-
-            {/* 3. Prompt Node */}
-            {generatedPrompt && (
-                <FlowNode
-                    title="绘图指令 (Prompt)"
-                    status={stage > Stage.ReviewPrompt ? "已确认" : "生成中"}
-                    isActive={stage === Stage.ReviewPrompt}
-                    isCompleted={stage > Stage.ReviewPrompt}
-                >
-                    <textarea
-                        className="prompt-editor"
-                        value={generatedPrompt}
-                        onChange={e => setGeneratedPrompt(e.target.value)}
-                        disabled={stage !== Stage.ReviewPrompt}
-                    />
-                </FlowNode>
-            )}
-
-            {/* Connection 3-4 */}
-            {generatedPrompt && (
-                <FlowConnection
-                    active={stage === Stage.Painting}
-                    completed={stage === Stage.Done}
-                />
-            )}
-
-            {/* 4. Image Node */}
-            {(stage >= Stage.Painting || finalImage) && (
-                <FlowNode
-                    title="最终视觉笔记 (Visual Note)"
-                    status={stage === Stage.Done ? "完成" : "绘制中"}
-                    isActive={stage === Stage.Done || stage === Stage.Painting}
-                    isCompleted={stage === Stage.Done}
-                >
-                    <div style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', border: '1px solid #27272a' }}>
-                        {finalImage ? (
-                            <>
-                                {!imageError ? (
-                                    <>
-                                        <div
-                                            className="image-thumbnail"
-                                            onClick={() => setImageModalOpen(true)}
-                                            style={{ cursor: 'pointer', position: 'relative' }}
-                                        >
-                                            <img
-                                                src={finalImage}
-                                                style={{ width: '100%', maxHeight: '300px', objectFit: 'contain', display: 'block', backgroundColor: '#18181b' }}
-                                                onError={(e) => {
-                                                    console.error("Image render error", e);
-                                                }}
-                                                alt="Generated Visual Note"
-                                            />
-                                            <div className="image-overlay">
-                                                <span>🔍 点击查看大图</span>
-                                            </div>
-                                        </div>
-                                        {imageModalOpen && (
-                                            <div className="image-modal" onClick={() => setImageModalOpen(false)}>
-                                                <div className="image-modal-content" onClick={e => e.stopPropagation()}>
-                                                    <button className="modal-close" onClick={() => setImageModalOpen(false)}>✕</button>
-                                                    <img src={finalImage} alt="Full Size Visual Note" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                ) : (
-                                    <div style={{ padding: '40px', background: '#3f1111', color: '#f87171', textAlign: 'center' }}>
-                                        <h3>⚠️ 图片显示失败</h3>
-                                        <p>{imageError}</p>
-                                    </div>
-                                )}
-                                <div style={{ padding: '16px', background: '#18181b', borderTop: '1px solid #27272a', display: 'flex', justifyContent: 'flex-end' }}>
-                                    <a href={finalImage} download="soulnote_visual.png" className="primary-btn" style={{ width: 'auto', margin: 0, padding: '8px 16px', fontSize: '14px' }}>
-                                        ⬇️ 下载图片
-                                    </a>
-                                </div>
-                            </>
-                        ) : (
-                            <div style={{ height: '200px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#18181b' }}>
-                                <div className="spinner" style={{ width: '30px', height: '30px', marginBottom: '16px' }}></div>
-                                <div style={{ color: '#a1a1aa', fontSize: '12px' }}>AI 正在绘制...</div>
-                            </div>
-                        )}
+            {/* 4. Prompt Stage */}
+            {hasPrompts && (
+                <div className="horizontal-scroll-stage">
+                    <div className="stage-box">
+                        <div className="stage-label">
+                            <span className="stage-icon">🎨</span>
+                            <span>绘图指令</span>
+                        </div>
+                        <div className="horizontal-cards-container">
+                            {notes.map((note, index) => (
+                                <EditableCard
+                                    key={note.id}
+                                    type="prompt"
+                                    note={note}
+                                    index={index}
+                                    onEdit={(field, value) => updateNote(note.id, { [field]: value })}
+                                    isActive={activeInfo.type === 'prompt' && activeInfo.index === index}
+                                />
+                            ))}
+                        </div>
                     </div>
-                </FlowNode>
+                </div>
             )}
 
-            <div ref={bottomRef} style={{ height: '20px' }}></div>
+            {/* 5. Image Stage */}
+            {hasImages && (
+                <div className="horizontal-scroll-stage">
+                    <div className="stage-box">
+                        <div className="stage-label">
+                            <span className="stage-icon">🖼️</span>
+                            <span>视觉笔记</span>
+                        </div>
+                        <div className="horizontal-cards-container">
+                            {notes.map((note, index) => (
+                                <EditableCard
+                                    key={note.id}
+                                    type="image"
+                                    note={note}
+                                    index={index}
+                                    onEdit={() => { }}
+                                    isActive={activeInfo.type === 'image' && activeInfo.index === index}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Empty State */}
+            {!hasAnyNotes && !rawText && (
+                <div className="empty-state">
+                    <div className="empty-icon">📝</div>
+                    <p className="empty-text">在左侧输入文本开始创建视觉笔记</p>
+                </div>
+            )}
         </div>
     );
 };
