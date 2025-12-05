@@ -33,7 +33,7 @@ const STYLES = [
 const processLeftBrain = async (ai: GoogleGenAI, text: string): Promise<LeftBrainData> => {
   console.log("Processing Left Brain for text length:", text.length);
   const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || (import.meta as any)?.env?.VITE_API_KEY || (import.meta as any)?.env?.VITE_GEMINI_API_KEY;
-  const useProxy = !!TEXT_PROXY;
+  const useProxy = !!TEXT_PROXY && !isDev;
   const prompt = `
     # Role
 你是一位 ** 极致精炼的全覆盖笔记专家 **。
@@ -110,7 +110,7 @@ const processLeftBrain = async (ai: GoogleGenAI, text: string): Promise<LeftBrai
 
 const processSplitBrain = async (ai: GoogleGenAI, text: string): Promise<string[]> => {
   const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY || (import.meta as any)?.env?.VITE_API_KEY || (import.meta as any)?.env?.VITE_GEMINI_API_KEY;
-  const useProxy = !!TEXT_PROXY;
+  const useProxy = !!TEXT_PROXY && !isDev;
   const prompt = `
 # Role
 你是一位**资深内容策略师**，擅长判断文本是否需要拆分，以及如何进行最优拆分。
@@ -248,6 +248,7 @@ const IMAGE_MODEL = process.env.IMAGE_MODEL || 'gemini-3-pro-image-preview';
 const IMAGEN_PROXY = process.env.IMAGEN_PROXY || '/api/imagen';
 const TEXT_PROXY = process.env.TEXT_PROXY || '/api/genai';
 const TEXT_MODEL = 'gemini-2.0-flash-exp';
+const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV;
 
 const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Promise<string> => {
   console.log("Starting image generation with prompt:", prompt.substring(0, 120));
@@ -322,8 +323,10 @@ const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Pr
       throw new Error("Missing API_KEY for Imagen request");
     }
 
-    // Use proxy to avoid browser CORS; Vite proxy handles dev, production needs backend.
-    const url = `${IMAGEN_PROXY}/v1beta/models/${IMAGE_MODEL}:predict`;
+    const useProxyImage = !!IMAGEN_PROXY && !isDev;
+    const url = useProxyImage
+      ? `${IMAGEN_PROXY}/v1beta/models/${IMAGE_MODEL}:predict`
+      : `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:predict?key=${apiKey}`;
     const body = {
       instances: [
         { prompt: imagePrompt }
@@ -359,27 +362,27 @@ const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Pr
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      if (IMAGE_MODEL.toLowerCase().includes('gemini')) {
-        const res = await ai.models.generateContent({
-          model: IMAGE_MODEL,
-          contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
-          generationConfig: {
-            responseMimeType: 'image/png'
-          }
-        });
-
-        const inline = extractInlineImage(res);
-        if (!inline) {
-          throw new Error("No inline image returned");
-        }
-        const dataUri = `data:${inline.mimeType};base64,${inline.data}`;
-        console.log("Generated image data URI length:", dataUri.length);
-        return dataUri;
-      } else {
+      if (!isDev && IMAGE_MODEL.toLowerCase().includes('imagen')) {
         const { dataUri } = await fetchImagen(imagePrompt);
         console.log("Generated image data URI length:", dataUri.length);
         return dataUri;
       }
+
+      const res = await ai.models.generateContent({
+        model: IMAGE_MODEL,
+        contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
+        generationConfig: {
+          responseMimeType: 'image/png'
+        }
+      });
+
+      const inline = extractInlineImage(res);
+      if (!inline) {
+        throw new Error("No inline image returned");
+      }
+      const dataUri = `data:${inline.mimeType};base64,${inline.data}`;
+      console.log("Generated image data URI length:", dataUri.length);
+      return dataUri;
     } catch (e) {
       console.warn(`Image generation attempt ${i + 1} failed: `, e);
       lastError = e;
