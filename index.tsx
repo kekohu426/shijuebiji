@@ -997,6 +997,7 @@ const App = () => {
           notes={notes}
           updateNote={updateNote}
           rawText={savedOriginalText || rawText}
+          regenerateNote={regenerateNote}
         />
       </div>
 
@@ -1202,9 +1203,14 @@ const App = () => {
         {/* 底部输入区 */}
         <div className="chat-input-area">
           {stage === Stage.Done ? (
-            <button className="primary-btn" onClick={() => window.location.reload()} style={{ height: '50px', fontSize: '14px' }}>
-              🔄 开始新笔记
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="primary-btn" onClick={regenerateAll} style={{ height: '50px', fontSize: '14px' }} disabled={notes.length === 0}>
+                🔄 重新生成全部
+              </button>
+              <button className="primary-btn" onClick={() => window.location.reload()} style={{ height: '50px', fontSize: '14px' }}>
+                🔄 开始新笔记
+              </button>
+            </div>
           ) : (
             <>
               <textarea

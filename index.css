@@ -2107,9 +2107,10 @@ body {
 .horizontal-cards-container {
   display: flex;
   gap: 16px;
-  justify-content: center;
-  flex-wrap: wrap;
-  overflow: visible;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 8px 12px 12px;
   scroll-behavior: smooth;
   /* 自定义滚动条 */
@@ -2702,7 +2703,7 @@ body {
   align-items: center;
   gap: 4px;
   margin: 0 auto 6px;
-  width: auto;
+  width: fit-content;
 }
 
 /* 2. Auto-Focus & Dimming */

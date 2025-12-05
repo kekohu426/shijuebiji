@@ -5,6 +5,7 @@ interface FlowCanvasProps {
     notes: NoteUnit[];
     updateNote: (id: string, data: Partial<NoteUnit>) => void;
     rawText: string;
+    regenerateNote: (id: string) => void;
 }
 
 // --- Helper Components ---
@@ -40,9 +41,10 @@ const OriginalTextCapsule: React.FC<{ text: string }> = ({ text }) => {
 interface BlockEditorProps {
     structure: LeftBrainData;
     onChange: (newStructure: LeftBrainData) => void;
+    readOnly?: boolean;
 }
 
-const BlockEditor: React.FC<BlockEditorProps> = ({ structure, onChange }) => {
+const BlockEditor: React.FC<BlockEditorProps> = ({ structure, onChange, readOnly }) => {
     const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         onChange({ ...structure, title: e.target.value });
     };
@@ -78,12 +80,14 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ structure, onChange }) => {
                     className="block-title-input"
                     value={structure.title}
                     onChange={handleTitleChange}
+                    disabled={readOnly}
                     placeholder="主标题"
                 />
                 <textarea
                     className="block-summary-input"
                     value={structure.summary_context}
                     onChange={handleSummaryChange}
+                    disabled={readOnly}
                     placeholder="背景摘要..."
                 />
             </div>
@@ -97,23 +101,27 @@ const BlockEditor: React.FC<BlockEditorProps> = ({ structure, onChange }) => {
                                 className="module-heading-input"
                                 value={module.heading}
                                 onChange={(e) => handleModuleChange(index, 'heading', e.target.value)}
+                                disabled={readOnly}
                                 placeholder="模块标题"
                             />
                             <textarea
                                 className="module-body-input"
                                 value={module.content}
                                 onChange={(e) => handleModuleChange(index, 'content', e.target.value)}
+                                disabled={readOnly}
                                 placeholder="模块内容..."
                             />
                         </div>
                         <div className="module-actions">
-                            <button className="icon-btn delete" onClick={() => deleteModule(index)} title="删除">🗑️</button>
+                            {!readOnly && <button className="icon-btn delete" onClick={() => deleteModule(index)} title="删除">🗑️</button>}
                         </div>
                     </div>
                 ))}
-                <button className="add-module-btn" onClick={addModule}>
-                    <span>➕ 添加模块</span>
-                </button>
+                {!readOnly && (
+                    <button className="add-module-btn" onClick={addModule}>
+                        <span>➕ 添加模块</span>
+                    </button>
+                )}
             </div>
         </div>
     );
@@ -150,16 +158,20 @@ interface EditableCardProps {
     index: number;
     onEdit: (field: string, value: any) => void;
     isActive: boolean;
+    onRegenerate?: (id: string) => void;
 }
 
-const EditableCard: React.FC<EditableCardProps> = ({ type, note, index, onEdit, isActive }) => {
+const EditableCard: React.FC<EditableCardProps> = ({ type, note, index, onEdit, isActive, onRegenerate }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState('');
 
-    const isProcessing = note.isProcessing;
+    const isProcessing =
+        type === 'prompt'
+            ? note.isProcessing || (!!note.structure && !note.generatedPrompt && note.stage >= Stage.Designing)
+            : note.isProcessing;
     const isCompleted = type === 'split' ? !!note.structure :
         type === 'structure' ? !!note.generatedPrompt :
-            type === 'prompt' ? !!note.finalImage :
+            type === 'prompt' ? !!note.generatedPrompt :
                 !!note.finalImage;
 
     // Auto-expand logic for Split Text
@@ -177,6 +189,14 @@ const EditableCard: React.FC<EditableCardProps> = ({ type, note, index, onEdit, 
     };
 
     const cardClass = `flow-card ${isActive ? 'focus-active' : 'focus-dimmed'}`;
+    const locked =
+        type === 'split'
+            ? note.stage > Stage.ReviewSplit
+            : type === 'structure'
+                ? note.stage >= Stage.ReviewPrompt
+                : type === 'prompt'
+                    ? note.stage >= Stage.Painting
+                    : note.stage >= Stage.Done;
 
     // 1. Split Text Card
     if (type === 'split') {
@@ -194,6 +214,7 @@ const EditableCard: React.FC<EditableCardProps> = ({ type, note, index, onEdit, 
                         style={{ minHeight: '120px', background: 'transparent', border: 'none', resize: 'vertical' }}
                         value={note.originalText}
                         onChange={handleSplitTextChange}
+                        disabled={locked}
                     />
                 </div>
             </div>
@@ -219,6 +240,7 @@ const EditableCard: React.FC<EditableCardProps> = ({ type, note, index, onEdit, 
                         <BlockEditor
                             structure={note.structure}
                             onChange={(newStructure) => onEdit('structure', newStructure)}
+                            readOnly={locked}
                         />
                     ) : (
                         <div className="card-placeholder">等待处理...</div>
@@ -246,11 +268,11 @@ const EditableCard: React.FC<EditableCardProps> = ({ type, note, index, onEdit, 
     }
 
     // 4. Image Card
-    if (type === 'image') {
-        return (
-            <div className={cardClass} id={`card-image-${index}`}>
-                <div className="flow-card-header">
-                    <div className="flow-card-title">
+if (type === 'image') {
+    return (
+        <div className={cardClass} id={`card-image-${index}`}>
+            <div className="flow-card-header">
+                <div className="flow-card-title">
                         <span className="card-icon">🖼️</span>
                         <span>视觉笔记</span>
                     </div>
@@ -259,22 +281,30 @@ const EditableCard: React.FC<EditableCardProps> = ({ type, note, index, onEdit, 
                         {isCompleted && <span className="status-badge completed">✓</span>}
                     </div>
                 </div>
-                <div className="flow-card-content">
-                    {note.finalImage ? (
-                        <>
-                            <img src={note.finalImage} alt={`视觉笔记 ${index + 1}`} className="result-image" />
-                            <a
+            <div className="flow-card-content">
+                {note.finalImage ? (
+                    <>
+                        <img src={note.finalImage} alt={`视觉笔记 ${index + 1}`} className="result-image" />
+                        <a
                                 href={note.finalImage}
                                 download={`visual-note-${index + 1}.png`}
-                                className="download-btn"
-                            >
-                                ⬇️ 下载图片
-                            </a>
-                        </>
-                    ) : (
-                        <div className="image-placeholder">
-                            <span className="placeholder-icon">🖼️</span>
-                            <p className="card-placeholder">等待绘制...</p>
+                            className="download-btn"
+                        >
+                            ⬇️ 下载图片
+                        </a>
+                        <button
+                            className="download-btn"
+                            style={{ marginTop: '8px' }}
+                            onClick={() => onRegenerate && onRegenerate(note.id)}
+                            disabled={note.isProcessing}
+                        >
+                            🔄 重新生成
+                        </button>
+                    </>
+                ) : (
+                    <div className="image-placeholder">
+                        <span className="placeholder-icon">🖼️</span>
+                        <p className="card-placeholder">等待绘制...</p>
                         </div>
                     )}
                 </div>
@@ -287,7 +317,7 @@ const EditableCard: React.FC<EditableCardProps> = ({ type, note, index, onEdit, 
 
 // --- Main Canvas ---
 
-export const FlowCanvas: React.FC<FlowCanvasProps> = ({ notes, updateNote, rawText }) => {
+export const FlowCanvas: React.FC<FlowCanvasProps> = ({ notes, updateNote, rawText, regenerateNote }) => {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     // Determine active stage/card for auto-focus
@@ -343,11 +373,6 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({ notes, updateNote, rawTe
             {rawText && (
                 <div className="horizontal-scroll-stage">
                     <div className="stage-box-original">
-                        <div className="stage-label">
-                            <span className="stage-icon">📄</span>
-                            <span>原始文本</span>
-                            <span className="text-muted">({rawText.length} 字)</span>
-                        </div>
                         <OriginalTextCapsule text={rawText} />
                     </div>
                 </div>
@@ -363,14 +388,14 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({ notes, updateNote, rawTe
                         </div>
                         <div className="horizontal-cards-container">
                             {notes.map((note, index) => (
-                                <EditableCard
-                                    key={note.id}
-                                    type="split"
-                                    note={note}
-                                    index={index}
-                                    onEdit={(field, value) => updateNote(note.id, { [field]: value })}
-                                    isActive={activeInfo.type === 'split' && activeInfo.index === index}
-                                />
+                            <EditableCard
+                                key={note.id}
+                                type="split"
+                                note={note}
+                                index={index}
+                                onEdit={(field, value) => updateNote(note.id, { [field]: value })}
+                                isActive={activeInfo.type === 'split' && activeInfo.index === index}
+                            />
                             ))}
                         </div>
                     </div>
@@ -387,14 +412,14 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({ notes, updateNote, rawTe
                         </div>
                         <div className="horizontal-cards-container">
                             {notes.map((note, index) => (
-                                <EditableCard
-                                    key={note.id}
-                                    type="structure"
-                                    note={note}
-                                    index={index}
-                                    onEdit={(field, value) => updateNote(note.id, { [field]: value })}
-                                    isActive={activeInfo.type === 'structure' && activeInfo.index === index}
-                                />
+                            <EditableCard
+                                key={note.id}
+                                type="structure"
+                                note={note}
+                                index={index}
+                                onEdit={(field, value) => updateNote(note.id, { [field]: value })}
+                                isActive={activeInfo.type === 'structure' && activeInfo.index === index}
+                            />
                             ))}
                         </div>
                     </div>
@@ -411,14 +436,14 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({ notes, updateNote, rawTe
                         </div>
                         <div className="horizontal-cards-container">
                             {notes.map((note, index) => (
-                                <EditableCard
-                                    key={note.id}
-                                    type="prompt"
-                                    note={note}
-                                    index={index}
-                                    onEdit={(field, value) => updateNote(note.id, { [field]: value })}
-                                    isActive={activeInfo.type === 'prompt' && activeInfo.index === index}
-                                />
+                            <EditableCard
+                                key={note.id}
+                                type="prompt"
+                                note={note}
+                                index={index}
+                                onEdit={(field, value) => updateNote(note.id, { [field]: value })}
+                                isActive={activeInfo.type === 'prompt' && activeInfo.index === index}
+                            />
                             ))}
                         </div>
                     </div>
@@ -435,14 +460,15 @@ export const FlowCanvas: React.FC<FlowCanvasProps> = ({ notes, updateNote, rawTe
                         </div>
                         <div className="horizontal-cards-container">
                             {notes.map((note, index) => (
-                                <EditableCard
-                                    key={note.id}
-                                    type="image"
-                                    note={note}
-                                    index={index}
-                                    onEdit={() => { }}
-                                    isActive={activeInfo.type === 'image' && activeInfo.index === index}
-                                />
+                            <EditableCard
+                                key={note.id}
+                                type="image"
+                                note={note}
+                                index={index}
+                                onEdit={() => { }}
+                                isActive={activeInfo.type === 'image' && activeInfo.index === index}
+                                onRegenerate={regenerateNote}
+                            />
                             ))}
                         </div>
                     </div>
