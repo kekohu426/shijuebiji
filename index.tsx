@@ -213,8 +213,8 @@ Footer Watermark: "${settings.watermark}"
   `.trim();
 };
 
-// Default to Gemini 3 Pro Image for better中文字支持，可用 IMAGE_MODEL 覆盖。
-const IMAGE_MODEL = process.env.IMAGE_MODEL || 'gemini-3-pro-image';
+// Default to Gemini 3 Pro Image (preview); override via IMAGE_MODEL env if needed.
+const IMAGE_MODEL = process.env.IMAGE_MODEL || 'gemini-3-pro-image-preview';
 const IMAGEN_PROXY = process.env.IMAGEN_PROXY || '/api/imagen';
 
 const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Promise<string> => {
