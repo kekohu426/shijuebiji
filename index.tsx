@@ -213,8 +213,8 @@ Footer Watermark: "${settings.watermark}"
   `.trim();
 };
 
-// High-quality image model (Imagen). Override via IMAGE_MODEL env if needed.
-const IMAGE_MODEL = process.env.IMAGE_MODEL || 'imagen-4.0-generate-001';
+// Default to Gemini 3 Pro Image for better中文字支持，可用 IMAGE_MODEL 覆盖。
+const IMAGE_MODEL = process.env.IMAGE_MODEL || 'gemini-3-pro-image';
 const IMAGEN_PROXY = process.env.IMAGEN_PROXY || '/api/imagen';
 
 const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Promise<string> => {
@@ -271,6 +271,19 @@ const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Pr
   const maxRetries = 3;
   let lastError;
 
+  const extractInlineImage = (response: any): { data: string, mimeType: string } | null => {
+    const candidates = response?.candidates || [];
+    for (const cand of candidates) {
+      const parts = cand?.content?.parts || [];
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          return { data: part.inlineData.data, mimeType: part.inlineData.mimeType || 'image/png' };
+        }
+      }
+    }
+    return null;
+  };
+
   const fetchImagen = async (imagePrompt: string): Promise<{ dataUri: string }> => {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
@@ -314,9 +327,27 @@ const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Pr
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const { dataUri } = await fetchImagen(imagePrompt);
-      console.log("Generated image data URI length:", dataUri.length);
-      return dataUri;
+      if (IMAGE_MODEL.toLowerCase().includes('gemini')) {
+        const res = await ai.models.generateContent({
+          model: IMAGE_MODEL,
+          contents: [{ role: 'user', parts: [{ text: imagePrompt }] }],
+          generationConfig: {
+            responseMimeType: 'image/png'
+          }
+        });
+
+        const inline = extractInlineImage(res);
+        if (!inline) {
+          throw new Error("No inline image returned");
+        }
+        const dataUri = `data:${inline.mimeType};base64,${inline.data}`;
+        console.log("Generated image data URI length:", dataUri.length);
+        return dataUri;
+      } else {
+        const { dataUri } = await fetchImagen(imagePrompt);
+        console.log("Generated image data URI length:", dataUri.length);
+        return dataUri;
+      }
     } catch (e) {
       console.warn(`Image generation attempt ${i + 1} failed: `, e);
       lastError = e;
