@@ -213,8 +213,8 @@ Footer Watermark: "${settings.watermark}"
   `.trim();
 };
 
-// High-quality image model (Imagen). If env overrides, use that.
-const IMAGE_MODEL = process.env.IMAGE_MODEL || 'imagen-3.0-generate-001';
+// High-quality image model (Imagen). Override via IMAGE_MODEL env if needed.
+const IMAGE_MODEL = process.env.IMAGE_MODEL || 'imagen-4.0-generate-001';
 const IMAGEN_PROXY = process.env.IMAGEN_PROXY || '/api/imagen';
 
 const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Promise<string> => {
@@ -278,13 +278,15 @@ const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Pr
     }
 
     // Use proxy to avoid browser CORS; Vite proxy handles dev, production needs backend.
-    const url = `${IMAGEN_PROXY}/v1beta/models/${IMAGE_MODEL}:generateImages?key=${apiKey}`;
+    const url = `${IMAGEN_PROXY}/v1beta/models/${IMAGE_MODEL}:predict?key=${apiKey}`;
     const body = {
-      model: IMAGE_MODEL,
-      prompt: { text: imagePrompt },
-      numberOfImages: 1,
-      mimeType: "image/png",
-      // aspectRatio: "3:4" // Uncomment if backend supports aspect ratios in your quota
+      instances: [
+        { prompt: imagePrompt }
+      ],
+      parameters: {
+        sampleCount: 1,
+        outputMimeType: "image/png"
+      }
     };
 
     const res = await fetch(url, {
@@ -301,8 +303,8 @@ const processHand = async (ai: GoogleGenAI, prompt: string, styleId: string): Pr
     }
 
     const json = await res.json();
-    const img = json?.images?.[0];
-    const data = img?.base64Data || img?.data;
+    const img = json?.predictions?.[0];
+    const data = img?.bytesBase64Encoded || img?.base64Data || img?.data;
     const mimeType = img?.mimeType || 'image/png';
     if (!data) {
       throw new Error("Imagen response missing image data");
